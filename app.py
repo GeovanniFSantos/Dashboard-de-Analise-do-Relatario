@@ -174,7 +174,7 @@ if not df_dados_original.empty:
              df_dados_por_data = df_dados_por_data[df_dados_por_data['Mês_Exibicao'].isin(meses_selecionados_exib)]
 
 
-    # FIM DA FILTRAGEM DE DATA. df_dados_por_data contem apenas os dados do período selecionado.
+    # FIM DA FILTRAGEM DE DATA. df_dados_por_data contem apenas os dados do período seleccionado.
     
     
     # === FILTROS HIERÁRQUICOS (LOJA > SEGMENTO) ===
@@ -185,8 +185,10 @@ if not df_dados_original.empty:
     # --------------------------------------------------------------------------
     # FILTRO PADRÃO: DEIXAR TODAS AS LOJAS ATIVAS POR PADRÃO (REVERSÃO DO FILTRO 'Bontempo')
     # --------------------------------------------------------------------------
-    default_loja = lojas_unicas # Define o padrão como TODAS as lojas
-    
+    # default_loja = lojas_unicas # Define o padrão como TODAS as lojas
+    default_loja = ['Bontempo'] if 'Bontempo' in lojas_unicas else lojas_unicas
+
+    # --------------------------------------------------------------------------    
     lojas_selecionadas = st.sidebar.multiselect(
         "Selecione a Loja:",
         options=lojas_unicas,
@@ -372,7 +374,7 @@ if not df_dados_original.empty:
     # ITEM 2: TABELA COMPARATIVA DE CATEGORIAS (NOVO ITEM)
     # Este item compara a contagem de profissionais por categoria em três escopos.
     # =======================================================================
-    #st.subheader("2. Comparativo de Profissionais por Categoria (Loja vs Segmento vs Gabriel Pro)")
+    st.subheader("2. Comparativo de Profissionais por Categoria (Loja vs Segmento vs Gabriel Pro)")
 
     # 1. Obter o DataFrame de Desempenho (df_desempenho) para a Loja/Segmento Filtrado
     # Este bloco de código foi movido do Item 7 (antigo 6) para o topo, para uso global.
@@ -387,13 +389,14 @@ if not df_dados_original.empty:
         (df_total_periodo.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum() >= 150000),  
         (df_total_periodo.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum() >= 1)         
     ]
-    categorias = ['Diamante', 'Esmeralda', 'Ruby', 'Topázio', 'Pro']
+    categorias_selecionadas = ['Diamante', 'Esmeralda', 'Ruby', 'Topázio', 'Pro', 'Sem Categoria']
     
     
     # Função para calcular categorias de forma segura
     def calcular_categorias(df_base, df_agrupado, condicoes_base):
         # Garante que o df_agrupado não está vazio antes de tentar calcular as categorias
         if df_agrupado.empty:
+            # Se o df estiver vazio, retorna um DataFrame vazio com as colunas esperadas
             return pd.DataFrame(columns=['Categoria', COLUNA_ESPECIFICADOR, 'Pontuacao_Total'])
         
         # Recria as condições com base nas pontuações do DF de agrupamento
@@ -404,8 +407,11 @@ if not df_dados_original.empty:
             (df_agrupado['Pontuacao_Total'] >= 150000),  
             (df_agrupado['Pontuacao_Total'] >= 1)         
         ]
+        
+        # CRÍTICO: Remova 'Sem Categoria' da lista de saída para np.select
+        categorias_np_select = ['Diamante', 'Esmeralda', 'Ruby', 'Topázio', 'Pro']
 
-        df_agrupado['Categoria'] = np.select(condicoes_agrupadas, categorias, default='Sem Categoria')
+        df_agrupado['Categoria'] = np.select(condicoes_agrupadas, categorias_np_select, default='Sem Categoria')
         return df_agrupado
 
     # 2. CÁLCULO PARA O ESCOPO TOTAL (GABRIEL PRO) - df_total_periodo
@@ -428,11 +434,11 @@ if not df_dados_original.empty:
     
     def get_contagem_categoria(df_desempenho):
         if df_desempenho.empty:
-            return {cat: 0 for cat in ['Diamante', 'Esmeralda', 'Ruby', 'Topázio', 'Pro', 'Sem Categoria']}
+            return {cat: 0 for cat in categorias_selecionadas}
         
         contagem = df_desempenho.groupby('Categoria')[COLUNA_ESPECIFICADOR].nunique().to_dict()
         # Preenche com 0s categorias ausentes
-        for cat in ['Diamante', 'Esmeralda', 'Ruby', 'Topázio', 'Pro', 'Sem Categoria']:
+        for cat in categorias_selecionadas:
             if cat not in contagem:
                 contagem[cat] = 0
         return contagem
@@ -471,8 +477,22 @@ if not df_dados_original.empty:
     df_categorias_comparativo = pd.concat([df_categorias_comparativo, pd.DataFrame([total_row])], ignore_index=True)
     
     # 7. Exibição da Tabela
+    # Função para estilizar APENAS a coluna Profissional Ativo
+    def style_nome_categoria(val):
+        # Cores de texto sem cor de fundo (as mesmas do Item 8)
+        cores = {
+            'Diamante': 'color: #b3e6ff; font-weight: bold', # Ciano Claro
+            'Esmeralda': 'color: #a3ffb6; font-weight: bold', # Verde Claro
+            'Ruby': 'color: #ff9999; font-weight: bold', # Vermelho Claro
+            'Topázio': 'color: #ffe08a; font-weight: bold', # Amarelo Claro
+            'Pro': 'color: #d1d1d1; font-weight: bold', # Cinza
+            'Total': 'color: #ffffff; font-weight: bold; background-color: #333333', # Fundo Escuro para a linha Total
+            'Sem Categoria': 'color: #ffffff; font-weight: bold' # Branco para Sem Categoria
+        }
+        return cores.get(val, '')
+        
     st.dataframe(
-        df_categorias_comparativo.style.set_properties(**{'border': '1px solid #333333'})
+        df_categorias_comparativo.style.applymap(style_nome_categoria, subset=['Profissional Ativo']) # Aplica cor na coluna Nome
                                        .format({col: '{:,.0f}' for col in ['Qtd Loja', 'Qtd Segmento', 'Qtd Gabriel Pro']})
                                        .set_properties(**{'font-weight': 'bold'}, subset=pd.IndexSlice[df_categorias_comparativo['Profissional Ativo'] == 'Total', :])
                                        .set_properties(**{'text-align': 'center'}, subset=pd.IndexSlice[:, ['Qtd Loja', 'Qtd Segmento', 'Qtd Gabriel Pro']]), # CENTRALIZAÇÃO AQUI
@@ -535,8 +555,103 @@ if not df_dados_original.empty:
             use_container_width=True
         )
 
-    # 4. Gráfico de Barras (Pontos por Segmento - FILTRADO) - Antigo Item 3
-    st.subheader("4. Análise de Distribuição (Pontos por Segmento - Loja/Segmento Filtrado)")
+    # =======================================================================
+    # NOVO ITEM 4: TABELA PIVÔ DE VALOR MÉDIO POR MÊS E TEMPORADA
+    # =======================================================================
+    st.subheader("4. Valor Médio de Pedido por Mês e Temporada (Filtrado por Loja/Segmento)")
+    
+    if 'Mês_Exibicao' in df_filtrado.columns and 'Temporada_Exibicao' in df_filtrado.columns:
+
+        # 1. Agrupamento para Valor Médio Mensal (Mês x Temporada)
+        df_agrupado_mensal = df_filtrado.groupby(['Mês_Exibicao', 'Temporada_Exibicao']).agg(
+            Pontos_Total=('Pontos', 'sum'),
+            Pedidos_Unicos=(COLUNA_PEDIDO, 'nunique')
+        ).reset_index()
+
+        # Calcula o Valor Médio
+        df_agrupado_mensal['Valor_Medio'] = np.where(
+            df_agrupado_mensal['Pedidos_Unicos'] > 0,
+            df_agrupado_mensal['Pontos_Total'] / df_agrupado_mensal['Pedidos_Unicos'],
+            0
+        )
+        
+        # Tabela Pivô Mensal
+        df_pivot_mensal = df_agrupado_mensal.pivot_table(
+            index='Mês_Exibicao', 
+            columns='Temporada_Exibicao', 
+            values='Valor_Medio',
+            fill_value=0 
+        ).reset_index()
+        
+        # 2. Reordenação dos Meses (Julho a Junho)
+        mes_ordem_fiscal = {
+            'Jul (07)': 1, 'Ago (08)': 2, 'Set (09)': 3, 'Out (10)': 4, 'Nov (11)': 5, 
+            'Dez (12)': 6, 'Jan (01)': 7, 'Fev (02)': 8, 'Mar (03)': 9, 'Abr (04)': 10,
+            'Mai (05)': 11, 'Jun (06)': 12
+        }
+        df_pivot_mensal['Ordem'] = df_pivot_mensal['Mês_Exibicao'].map(mes_ordem_fiscal)
+        df_pivot_mensal.sort_values(by='Ordem', inplace=True)
+        df_pivot_mensal.drop('Ordem', axis=1, inplace=True)
+        
+        # 3. Tratamento de Colunas e Renomeação
+        colunas_temporada_vm = [col for col in df_pivot_mensal.columns if col.startswith('Temporada')]
+        colunas_temporada_vm = sorted(colunas_temporada_vm) # Ordenação T7, T8, T9...
+        
+        # Renomeia as colunas para "Médio Por Pedido T X"
+        df_pivot_mensal.columns = [
+            'Mês' if col == 'Mês_Exibicao' else f"Médio Por Pedido {col.replace('Temporada ', 'T')}"
+            for col in df_pivot_mensal.columns
+        ]
+        
+        # 4. Agrupamento para a Linha de Topo (Valor Médio Total por Temporada)
+        df_agrupado_total_temp = df_filtrado.groupby('Temporada_Exibicao').agg(
+            Pontos_Total=('Pontos', 'sum'),
+            Pedidos_Unicos=(COLUNA_PEDIDO, 'nunique')
+        ).reset_index()
+        
+        df_agrupado_total_temp['Valor_Medio_Total'] = np.where(
+            df_agrupado_total_temp['Pedidos_Unicos'] > 0,
+            df_agrupado_total_temp['Pontos_Total'] / df_agrupado_total_temp['Pedidos_Unicos'],
+            0
+        )
+        
+        # 5. Criação da Tabela de Topo (KPIs)
+        # ----------------------------------------------------------------------
+        st.markdown("##### Valor Médio Total das Vendas por Pedido (Temporada)")
+        
+        # CRÍTICO: Correção para evitar erro quando colunas_temporada_vm está vazia
+        num_cols_kpi_vm = max(1, len(colunas_temporada_vm))
+        cols_kpi_vm = st.columns(num_cols_kpi_vm)
+        
+        if colunas_temporada_vm: # Só exibe KPIs se houver temporadas
+            for i, t_col in enumerate(colunas_temporada_vm):
+                # Obtém o valor do total
+                vm_valor_series = df_agrupado_total_temp.loc[df_agrupado_total_temp['Temporada_Exibicao'] == t_col, 'Valor_Medio_Total']
+                
+                # Garante que há um valor antes de tentar acessar o .iloc[0]
+                vm_valor = vm_valor_series.iloc[0] if not vm_valor_series.empty else 0
+                
+                with cols_kpi_vm[i]:
+                    st.metric(f"Valor Médio {t_col.replace('Temporada ', 'T')}", 
+                             f"{vm_valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+        st.markdown("---")
+        # ----------------------------------------------------------------------
+        
+        
+        # 6. Exibição da Tabela Pivô Mensal
+        colunas_display_vm = [col for col in df_pivot_mensal.columns if col != 'Mês']
+        df_pivot_mensal.set_index('Mês', inplace=True)
+
+        st.dataframe(
+            df_pivot_mensal.style.format({col: lambda x: f"{x:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") 
+                                          for col in colunas_display_vm})
+                                 .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, subset=pd.IndexSlice[:, colunas_display_vm]),
+            use_container_width=True
+        )
+
+
+    # 5. Gráfico de Barras (Pontos por Segmento - FILTRADO) - Antigo Item 4
+    st.subheader("5. Análise de Distribuição (Pontos por Segmento - Loja/Segmento Filtrado)")
     
     # Agrupa por Segmento e SOMA os Pontos no DF FILTRADO
     df_segmento_pontos = df_filtrado.groupby('Segmento')['Pontos'].sum().reset_index()
@@ -552,8 +667,8 @@ if not df_dados_original.empty:
     fig_segmento.update_layout(xaxis_title="Segmento", yaxis_title="Total de Pontos (Filtrado)")
     st.plotly_chart(fig_segmento, use_container_width=True)
 
-    # 5. Análise de Distribuição Total (Segmento - Pontos E Pedidos no Período Selecionado) - Antigo Item 4
-    st.subheader("5. Análise de Distribuição Total (Segmento - Pontos e Pedidos no Período Selecionado)")
+    # 6. Análise de Distribuição Total (Segmento - Pontos E Pedidos no Período Selecionado) - Antigo Item 5
+    st.subheader("6. Análise de Distribuição Total (Segmento - Pontos e Pedidos no Período Selecionado)")
     
     # === NOVO SELETOR DE MÉTRICA ===
     metrica_selecionada = st.selectbox(
@@ -587,11 +702,11 @@ if not df_dados_original.empty:
     fig_segmento_total.update_layout(xaxis_title="Segmento", yaxis_title=eixo_y_titulo)
     st.plotly_chart(fig_segmento_total, use_container_width=True)
     
-    # FIM DA ANÁLISE 5
+    # FIM DA ANÁLISE 6
 
-    # 6. Análise de Tendência ao Longo do Tempo (Pontos Totais) - Antigo Item 5
+    # 7. Análise de Tendência ao Longo do Tempo (Pontos Totais) - Antigo Item 6
     if 'Data da Venda' in df_filtrado.columns:
-        st.subheader("6. Tendência de Pontos (Pontos Totais)")
+        st.subheader("7. Tendência de Pontos (Pontos Totais)")
         
         # Agrupa os dados por mês/ano e soma os Pontos
         df_tendencia = df_filtrado.set_index('Data da Venda').resample('M')['Pontos'].sum().reset_index()
@@ -607,9 +722,9 @@ if not df_dados_original.empty:
         fig_tendencia.update_layout(yaxis_title="Pontos Totais")
         st.plotly_chart(fig_tendencia, use_container_width=True)
 
-    # 7. NOVO GRÁFICO: Pedidos Únicos por Mês - Antigo Item 6
+    # 8. NOVO GRÁFICO: Pedidos Únicos por Mês - Antigo Item 7
     if 'Mês_Exibicao' in df_filtrado.columns and COLUNA_PEDIDO in df_filtrado.columns:
-        st.subheader("7. Pedidos Únicos por Mês")
+        st.subheader("8. Pedidos Únicos por Mês")
         
         # Agrupa o DataFrame FILTRADO pelo Mês de Exibição e conta os pedidos únicos
         df_pedidos_por_mes = df_filtrado.groupby('Mês_Exibicao')[COLUNA_PEDIDO].nunique().reset_index()
@@ -636,9 +751,9 @@ if not df_dados_original.empty:
         st.plotly_chart(fig_pedidos_mes, use_container_width=True)
 
 
-    # 8. DESEMPENHO POR PROFISSIONAL E CATEGORIA - Antigo Item 7
+    # 9. DESEMPENHO POR PROFISSIONAL E CATEGORIA - Antigo Item 8
     if COLUNA_ESPECIFICADOR in df_filtrado.columns:
-        st.subheader("8. Desempenho por Profissional e Categoria")
+        st.subheader("9. Desempenho por Profissional e Categoria")
         
         # 1. Agrupamento por Profissional (Pontuação Total)
         df_desempenho = df_filtrado.groupby(COLUNA_ESPECIFICADOR)['Pontos'].sum().reset_index()
@@ -667,6 +782,16 @@ if not df_dados_original.empty:
         # 3. MATRIZ DE RESUMO (KPIs de Categoria)
         st.markdown("##### Resumo das Categorias (Contagem e Pontuação)")
         
+        # Criando o dicionário de cores para os nomes das categorias (para st.markdown)
+        cores_map_kpi = {
+            'Diamante': '#b3e6ff', 
+            'Esmeralda': '#a3ffb6', 
+            'Ruby': '#ff9999', 
+            'Topázio': '#ffe08a', 
+            'Pro': '#d1d1d1', 
+            'Sem Categoria': '#ffffff'
+        }
+        
         # Agrupar e somar os resultados por Categoria
         df_resumo_cat = df_desempenho.groupby('Categoria').agg(
             Contagem=('Categoria', 'size'),
@@ -684,7 +809,11 @@ if not df_dados_original.empty:
         for i, categoria in enumerate(colunas_matriz):
             contagem = df_resumo_cat.loc[df_resumo_cat['Categoria'] == categoria, 'Contagem'].sum()
             with colunas_kpi_contagem[i]:
-                 st.metric(label=categoria, value=f"{contagem:,.0f}")
+                 # --- APLICA COR E BOLD NO NOME DA CATEGORIA ---
+                 cor = cores_map_kpi.get(categoria, '#ffffff')
+                 st.markdown(f"<p style='color: {cor}; font-weight: bold; font-size: 14px;'>{categoria}</p>", unsafe_allow_html=True)
+                 st.metric(label=' ', value=f"{contagem:,.0f}")
+                 # --- FIM DA APLICAÇÃO ---
                  
         # Loop para exibir a pontuação total por categoria
         st.markdown('###### Pontuação Total por Categoria:')
@@ -716,19 +845,33 @@ if not df_dados_original.empty:
              lambda x: f"{x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
         )
         
-        st.dataframe(df_tabela_exibicao.style.set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, subset=pd.IndexSlice[:, ['Pontuação', 'Categoria']]), use_container_width=True) # CENTRALIZAÇÃO AQUI
-        
-    # 9. DESEMPENHO DE NOVOS CADASTROS (Antigo Item 8)
-    if COLUNA_ESPECIFICADOR in df_filtrado.columns and COLUNA_NUMERO_TEMPORADA in df_filtrado.columns:
+        # Função para estilizar as cores das categorias (Apenas Cor do Texto e Negrito)
+        def style_categoria_texto(val):
+            # Cores de texto sem cor de fundo
+            cores = {
+                'Diamante': 'color: #b3e6ff; font-weight: bold', # Ciano Claro
+                'Esmeralda': 'color: #a3ffb6; font-weight: bold', # Verde Claro
+                'Ruby': 'color: #ff9999; font-weight: bold', # Vermelho Claro
+                'Topázio': 'color: #ffe08a; font-weight: bold', # Amarelo Claro
+                'Pro': 'color: #d1d1d1; font-weight: bold', # Cinza
+                'Sem Categoria': 'color: #ffffff; font-weight: bold' # Branco para Sem Categoria
+            }
+            return cores.get(val, '')
 
-        st.subheader("9. Análise de Novos Cadastrados (Aquisição)")
+        st.dataframe(df_tabela_exibicao.style.applymap(style_categoria_texto, subset=['Categoria']) # Aplica a cor à coluna Categoria
+                                            .set_properties(**{'border': '1px solid #333333', 'text-align': 'center'}, subset=pd.IndexSlice[:, ['Pontuação', 'Categoria']]), use_container_width=True)
+        
+    # 10. DESEMPENHO DE NOVOS CADASTROS (Antigo Item 9)
+    if COLUNA_ESPECIFICADOR in df_filtrado.columns:
+
+        st.subheader("10. Análise de Novos Cadastrados (Aquisição)")
         
         # Filtra apenas os novos cadastrados no período e filtros de loja/segmento
         # ATENÇÃO: df_filtrado já contém Novo_Cadastrado marcado
         df_novos_filtrados = df_filtrado[df_filtrado['Novo_Cadastrado'] == True]
         
-        # --- 9A. KPIs de Pontuação de Novos Cadastrados ---
-        st.markdown("##### 9A. Pontuação e Contagem de Novos Clientes por Temporada")
+        # --- 10A. KPIs de Pontuação de Novos Cadastrados ---
+        st.markdown("##### 10A. Pontuação e Contagem de Novos Clientes por Temporada")
 
         # Colunas de todas as temporadas disponíveis (T7, T8, T9, T10, etc.)
         colunas_temporada_str = [col for col in df_filtrado.columns if col.startswith('Temporada ')]
@@ -767,8 +910,8 @@ if not df_dados_original.empty:
                 
         st.markdown("---")
         
-        # --- 9B. TABELA PIVÔ: Clientes Novos por Mês e Temporada ---
-        st.markdown("##### 9B. Contagem de Novos Profissionais Pontuados por Mês e Temporada")
+        # --- 10B. TABELA PIVÔ: Clientes Novos por Mês e Temporada ---
+        st.markdown("##### 10B. Contagem de Novos Profissionais Pontuados por Mês e Temporada")
 
         if 'Mês_Exibicao' in df_novos_filtrados.columns:
             
@@ -815,8 +958,8 @@ if not df_dados_original.empty:
                 use_container_width=True
             )
             
-            # --- 9C. Tabela de Nomes (Detalhe dos Clientes Novos) ---
-            st.markdown("##### 9C. Nomes dos Profissionais Novos (Com Compra na Temporada)")
+            # --- 10C. Tabela de Nomes (Detalhe dos Clientes Novos) ---
+            st.markdown("##### 10C. Nomes dos Profissionais Novos (Com Compra na Temporada)")
 
             # Agrupa os novos clientes e mostra a primeira compra histórica para detalhe
             df_nomes_novos = df_novos_filtrados.groupby(
@@ -840,3 +983,4 @@ if not df_dados_original.empty:
 # Mensagem se o DataFrame estiver vazio após o carregamento (não deve acontecer agora)
 elif df_dados_original.empty and Relatorio == 'Relatorio.xlsx':
     st.warning("O DataFrame está vazio. Verifique se a planilha Excel tem dados.")
+
